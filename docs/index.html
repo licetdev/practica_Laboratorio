@@ -1,0 +1,189 @@
+
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+
+<body>
+
+  <header>
+    <h1>🎯 Juego de Disparo al Objeto 3D</h1>
+    <p class="subtitle">Ejemplo didáctico de clase con HTML, CSS y Google &lt;model-viewer&gt;  Ing. Ramiro Bonilla</p>
+  </header>
+
+  <!-- Panel de Estadísticas / HUD -->
+ <div class="hud">
+    <div class="hud-card">Puntos: <span class="value" id="score">0</span></div>
+    <div class="hud-card">Disparos: <span class="value" id="shots">0</span></div>
+    <div class="hud-card">Aciertos: <span class="value" id="hits">0</span></div>
+  </div>
+
+  <!-- Barra de Salud del Objeto -->
+ <div class="health-container">
+    <div style="display:flex; justify-content:space-between; margin-bottom: 4px; font-size: 0.85rem;">
+      <span>Nivel de Disparos acertados..</span>
+      <span id="health-text">100 / 100</span>
+    </div>
+    <div class="health-bar-bg">
+      <div class="health-bar-fill" id="health-bar"></div>
+    </div>
+  </div> 
+
+  <!-- Contenedor del Modelo 3D con model-viewer solicitado -->
+  <div class="viewer-box" id="viewerBox">
+    
+    <model-viewer src="/docs/models/reptillian_alien/scene.gltf" camera-controls auto-rotate
+    ></model-viewer>
+
+  
+    <!-- Capa receptora de clics para detectar los disparos -->
+  <div class="target-overlay" id="targetOverlay" title="¡Haz clic aquí para disparar al objeto 3D!"></div>
+  </div>
+ <!-- Botones de Acción -->
+  <div class="controls">
+    <button onclick="resetGame()">🔄 Reiniciar Juego</button>
+  </div>
+
+  <!-- 3. Lógica del Juego en JavaScript -->
+  <script>
+    let score = 0;
+    let shots = 0;
+    let hits = 0;
+    let health = 100;
+    const maxHealth = 100;
+
+    const scoreEl = document.getElementById('score');
+    const shotsEl = document.getElementById('shots');
+    const hitsEl = document.getElementById('hits');
+    const healthBar = document.getElementById('health-bar');
+    const healthText = document.getElementById('health-text');
+    const viewerBox = document.getElementById('viewerBox');
+    const modelViewer = document.getElementById('eyeModel');
+    const targetOverlay = document.getElementById('targetOverlay');
+
+    // Sintetizador simple de sonido con Web Audio API
+    function playLaserSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.16);
+      } catch (e) {
+        // Audio deshabilitado o bloqueado por el navegador
+      }
+    }
+
+    // Evento de Disparo
+    targetOverlay.addEventListener('click', (e) => {
+      shots++;
+      shotsEl.textContent = shots;
+      playLaserSound();
+
+      // Coordenadas del clic dentro de la caja
+      const rect = viewerBox.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Calcular distancia al centro de la caja para determinar acierto
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const dist = Math.hypot(x - centerX, y - centerY);
+
+      // Si el disparo da dentro del radio del objeto 3D
+      const hitRadius = rect.width * 0.38;
+      if (dist < hitRadius) {
+        hits++;
+        hitsEl.textContent = hits;
+
+        const isCrit = dist < (hitRadius * 0.25); // Disparo en la pupila (crítico)
+        const damage = isCrit ? 25 : 10;
+        const points = isCrit ? 200 : 100;
+
+        score += points;
+        scoreEl.textContent = score;
+
+        health = Math.max(0, health - damage);
+        updateHealthUI();
+
+        // Sacudida visual
+        viewerBox.classList.remove('shake');
+        void viewerBox.offsetWidth; // trigger reflow
+        viewerBox.classList.add('shake');
+
+        // Mostrar chispazo de impacto
+        showImpact(x, y);
+
+        // Mostrar texto de daño
+        showDamageText(x, y, isCrit ? `-${damage} ¡CRÍTICO!` : `-${damage}`);
+
+        // Si la vida llega a 0, reiniciar con bono
+        if (health <= 0) {
+          setTimeout(() => {
+            alert('🎉 ¡Objetivo 3D neutralizado! +500 puntos');
+            score += 500;
+            scoreEl.textContent = score;
+            health = maxHealth;
+            updateHealthUI();
+          }, 200);
+        }
+      }
+    });
+
+    function updateHealthUI() {
+      const pct = (health / maxHealth) * 100;
+      healthBar.style.width = pct + '%';
+      healthText.textContent = `${health} / ${maxHealth}`;
+    }
+
+    function showImpact(x, y) {
+      const spark = document.createElement('div');
+      spark.className = 'impact-mark';
+      spark.style.left = x + 'px';
+      spark.style.top = y + 'px';
+      viewerBox.appendChild(spark);
+      setTimeout(() => spark.remove(), 500);
+    }
+
+    function showDamageText(x, y, text) {
+      const dmg = document.createElement('div');
+      dmg.className = 'damage-text';
+      dmg.textContent = text;
+      dmg.style.left = x + 'px';
+      dmg.style.top = y + 'px';
+      viewerBox.appendChild(dmg);
+      setTimeout(() => dmg.remove(), 600);
+    }
+
+    function resetGame() {
+      score = 0;
+      shots = 0;
+      hits = 0;
+      health = maxHealth;
+      scoreEl.textContent = '0';
+      shotsEl.textContent = '0';
+      hitsEl.textContent = '0';
+      updateHealthUI();
+    }
+
+    
+  </script>
+ 
+  <!-- Import the component -->
+  <script
+    type="module"
+    src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"
+  ></script>
+</body>
+</html>

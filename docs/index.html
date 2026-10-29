@@ -5,182 +5,321 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0d0b" />
+  <meta name="description" content="Entra a la zona de caza, apunta y derriba al objetivo 3D." />
+  <title>Alien Hunt — Zona de caza 3D</title>
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 
 <body>
 
   <header>
-    <h1>🎯 Juego de Disparo al Objeto 3D</h1>
-    <p class="subtitle">Ejemplo didáctico de clase con HTML, CSS y Google &lt;model-viewer&gt;  Ing. Ramiro Bonilla</p>
+    <p class="eyebrow"><span class="live-dot"></span> SIMULADOR DE ENTRENAMIENTO · ZONA 01</p>
+    <h1>ALIEN <span>HUNT</span></h1>
+    <p class="subtitle">Apunta, dispara y derriba al objetivo antes de que escape.</p>
   </header>
 
-  <!-- Panel de Estadísticas / HUD -->
- <div class="hud">
-    <div class="hud-card">Puntos: <span class="value" id="score">0</span></div>
-    <div class="hud-card">Disparos: <span class="value" id="shots">0</span></div>
-    <div class="hud-card">Aciertos: <span class="value" id="hits">0</span></div>
+  <div class="hud" aria-label="Estadísticas de la partida">
+    <div class="hud-card score-card"><span class="stat-label">Puntaje</span><span class="value" id="score" aria-live="polite">0</span></div>
+    <div class="hud-card"><span class="stat-label">Disparos</span><span class="value" id="shots" aria-live="polite">0</span></div>
+    <div class="hud-card"><span class="stat-label">Aciertos</span><span class="value" id="hits" aria-live="polite">0</span></div>
+    <div class="hud-card"><span class="stat-label">Fallos</span><span class="value" id="misses" aria-live="polite">0</span></div>
   </div>
 
-  <!-- Barra de Salud del Objeto -->
- <div class="health-container">
-    <div style="display:flex; justify-content:space-between; margin-bottom: 4px; font-size: 0.85rem;">
-      <span>Nivel de Disparos acertados..</span>
-      <span id="health-text">100 / 100</span>
+  <div class="health-container">
+    <div class="health-label">
+      <span>ENERGÍA DEL OBJETIVO</span>
+      <span id="health-text" aria-live="polite">100 / 100</span>
     </div>
-    <div class="health-bar-bg">
+    <div class="health-bar-bg" role="progressbar" aria-label="Energía del objetivo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" id="health-progress">
       <div class="health-bar-fill" id="health-bar"></div>
     </div>
-  </div> 
-
-  <!-- Contenedor del Modelo 3D con model-viewer solicitado -->
-  <div class="viewer-box" id="viewerBox">
-    
-    <model-viewer src="/docs/models/reptillian_alien/scene.gltf" camera-controls auto-rotate
-    ></model-viewer>
-
-  
-    <!-- Capa receptora de clics para detectar los disparos -->
-  <div class="target-overlay" id="targetOverlay" title="¡Haz clic aquí para disparar al objeto 3D!"></div>
+    <p class="game-status" id="game-status" aria-live="polite">OBJETIVO ACTIVO · dispara para iniciar</p>
   </div>
- <!-- Botones de Acción -->
+
+  <div class="viewer-box" id="viewerBox" aria-label="Campo de tiro">
+    <div class="field-label"><span>CAMPO DE TIRO</span><span>● EN VIVO</span></div>
+    <div class="target" id="target" role="button" tabindex="0" aria-label="Objetivo 3D en movimiento">
+      <model-viewer src="models/reptillian_alien/scene.gltf" auto-rotate disable-zoom
+        interaction-prompt="none" aria-label="Modelo 3D del objetivo"></model-viewer>
+    </div>
+    <div class="shot-feedback" id="shot-feedback" aria-hidden="true"></div>
+    <div class="aim-reticle" id="aim-reticle" aria-hidden="true"><span></span></div>
+    <div class="field-hint">MUEVE LA MIRA · CLIC PARA DISPARAR</div>
+  </div>
+
   <div class="controls">
-    <button onclick="resetGame()">🔄 Reiniciar Juego</button>
+    <span class="controls-hint">Cada impacto reduce la energía del objetivo</span>
+    <span class="audio-status" id="audio-status" role="status" aria-live="polite">SONIDO: SE ACTIVA AL DISPARAR</span>
+    <button id="reset-button" type="button"><span aria-hidden="true">↻</span> NUEVA PARTIDA</button>
   </div>
 
-  <!-- 3. Lógica del Juego en JavaScript -->
   <script>
-    let score = 0;
-    let shots = 0;
-    let hits = 0;
-    let health = 100;
     const maxHealth = 100;
-
+    const viewerBox = document.getElementById('viewerBox');
+    const target = document.getElementById('target');
     const scoreEl = document.getElementById('score');
     const shotsEl = document.getElementById('shots');
     const hitsEl = document.getElementById('hits');
+    const missesEl = document.getElementById('misses');
     const healthBar = document.getElementById('health-bar');
+    const healthProgress = document.getElementById('health-progress');
     const healthText = document.getElementById('health-text');
-    const viewerBox = document.getElementById('viewerBox');
-    const modelViewer = document.getElementById('eyeModel');
-    const targetOverlay = document.getElementById('targetOverlay');
+    const gameStatus = document.getElementById('game-status');
+    const feedback = document.getElementById('shot-feedback');
+    const reticle = document.getElementById('aim-reticle');
+    const audioStatus = document.getElementById('audio-status');
+    let audioContext;
+    let audioReadyPromise;
+    let shotNoiseBuffer;
 
-    // Sintetizador simple de sonido con Web Audio API
-    function playLaserSound() {
+    let score = 0;
+    let shots = 0;
+    let hits = 0;
+    let misses = 0;
+    let health = maxHealth;
+    let gameOver = false;
+    let reticleTimer;
+
+    function reportAudioError(error) {
+      audioStatus.textContent = 'SONIDO NO DISPONIBLE';
+      audioStatus.classList.add('has-error');
+      console.error('No se pudo reproducir el sonido del disparo:', error);
+    }
+
+    function getReadyAudioContext() {
       try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.16);
-      } catch (e) {
-        // Audio deshabilitado o bloqueado por el navegador
+        const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextConstructor) {
+          throw new Error('Este navegador no es compatible con Web Audio.');
+        }
+
+        if (!audioContext || audioContext.state === 'closed') {
+          audioContext = new AudioContextConstructor();
+          shotNoiseBuffer = undefined;
+        }
+
+        if (audioContext.state === 'running') {
+          audioStatus.textContent = 'SONIDO: ACTIVO';
+          audioStatus.classList.remove('has-error');
+          return Promise.resolve(audioContext);
+        }
+
+        if (!audioReadyPromise) {
+          audioStatus.textContent = 'ACTIVANDO SONIDO...';
+          audioStatus.classList.remove('has-error');
+          audioReadyPromise = audioContext.resume()
+            .then(() => {
+              if (audioContext.state !== 'running') {
+                throw new Error(`El contexto de audio quedó en estado ${audioContext.state}.`);
+              }
+              audioStatus.textContent = 'SONIDO: ACTIVO';
+              audioStatus.classList.remove('has-error');
+              return audioContext;
+            })
+            .catch((error) => {
+              reportAudioError(error);
+              return null;
+            })
+            .finally(() => {
+              audioReadyPromise = undefined;
+            });
+        }
+
+        return audioReadyPromise;
+      } catch (error) {
+        reportAudioError(error);
+        return Promise.resolve(null);
       }
     }
 
-    // Evento de Disparo
-    targetOverlay.addEventListener('click', (e) => {
-      shots++;
-      shotsEl.textContent = shots;
-      playLaserSound();
+    function playShotSound() {
+      void getReadyAudioContext().then((context) => {
+        if (!context) return;
 
-      // Coordenadas del clic dentro de la caja
-      const rect = viewerBox.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+        try {
+          const now = context.currentTime;
+          const shot = context.createOscillator();
+          const shotVolume = context.createGain();
+          shot.type = 'sawtooth';
+          shot.frequency.setValueAtTime(190, now);
+          shot.frequency.exponentialRampToValueAtTime(48, now + 0.13);
+          shotVolume.gain.setValueAtTime(0.22, now);
+          shotVolume.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+          shot.connect(shotVolume);
+          shotVolume.connect(context.destination);
+          shot.start(now);
+          shot.stop(now + 0.15);
 
-      // Calcular distancia al centro de la caja para determinar acierto
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-      const dist = Math.hypot(x - centerX, y - centerY);
+          if (!shotNoiseBuffer) {
+            const samples = Math.floor(context.sampleRate * 0.12);
+            shotNoiseBuffer = context.createBuffer(1, samples, context.sampleRate);
+            const noise = shotNoiseBuffer.getChannelData(0);
+            for (let i = 0; i < samples; i++) {
+              noise[i] = (Math.random() * 2 - 1) * (1 - i / samples);
+            }
+          }
 
-      // Si el disparo da dentro del radio del objeto 3D
-      const hitRadius = rect.width * 0.38;
-      if (dist < hitRadius) {
-        hits++;
-        hitsEl.textContent = hits;
-
-        const isCrit = dist < (hitRadius * 0.25); // Disparo en la pupila (crítico)
-        const damage = isCrit ? 25 : 10;
-        const points = isCrit ? 200 : 100;
-
-        score += points;
-        scoreEl.textContent = score;
-
-        health = Math.max(0, health - damage);
-        updateHealthUI();
-
-        // Sacudida visual
-        viewerBox.classList.remove('shake');
-        void viewerBox.offsetWidth; // trigger reflow
-        viewerBox.classList.add('shake');
-
-        // Mostrar chispazo de impacto
-        showImpact(x, y);
-
-        // Mostrar texto de daño
-        showDamageText(x, y, isCrit ? `-${damage} ¡CRÍTICO!` : `-${damage}`);
-
-        // Si la vida llega a 0, reiniciar con bono
-        if (health <= 0) {
-          setTimeout(() => {
-            alert('🎉 ¡Objetivo 3D neutralizado! +500 puntos');
-            score += 500;
-            scoreEl.textContent = score;
-            health = maxHealth;
-            updateHealthUI();
-          }, 200);
+          const noiseSource = context.createBufferSource();
+          const noiseFilter = context.createBiquadFilter();
+          const noiseVolume = context.createGain();
+          noiseSource.buffer = shotNoiseBuffer;
+          noiseFilter.type = 'lowpass';
+          noiseFilter.frequency.setValueAtTime(1100, now);
+          noiseFilter.frequency.exponentialRampToValueAtTime(180, now + 0.12);
+          noiseVolume.gain.setValueAtTime(0.16, now);
+          noiseVolume.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          noiseSource.connect(noiseFilter);
+          noiseFilter.connect(noiseVolume);
+          noiseVolume.connect(context.destination);
+          noiseSource.start(now);
+          noiseSource.stop(now + 0.13);
+        } catch (error) {
+          reportAudioError(error);
         }
+      });
+    }
+
+    function fireReticle(x, y) {
+      reticle.style.left = `${x}px`;
+      reticle.style.top = `${y}px`;
+      reticle.classList.add('is-visible', 'is-firing');
+      window.clearTimeout(reticleTimer);
+      reticleTimer = window.setTimeout(() => reticle.classList.remove('is-firing'), 140);
+    }
+
+    function updateHealthUI() {
+      const percentage = (health / maxHealth) * 100;
+      healthBar.style.width = `${percentage}%`;
+      healthProgress.setAttribute('aria-valuenow', health);
+      healthText.textContent = `${health} / ${maxHealth}`;
+      healthBar.classList.toggle('low', percentage <= 30);
+    }
+
+    function showFeedback(x, y, text, isHit) {
+      const mark = document.createElement('span');
+      mark.className = `shot-mark ${isHit ? 'hit-mark' : 'miss-mark'}`;
+      mark.textContent = text;
+      mark.style.left = `${x}px`;
+      mark.style.top = `${y}px`;
+      feedback.appendChild(mark);
+      window.setTimeout(() => mark.remove(), 750);
+    }
+
+    function handleShot(clientX, clientY) {
+      if (gameOver) return;
+
+      const field = viewerBox.getBoundingClientRect();
+      const x = clientX - field.left;
+      const y = clientY - field.top;
+      fireReticle(x, y);
+      playShotSound();
+      const targetBounds = target.getBoundingClientRect();
+      const targetCenterX = targetBounds.left + targetBounds.width / 2;
+      const targetCenterY = targetBounds.top + targetBounds.height / 2;
+      const normalizedX = (clientX - targetCenterX) / (targetBounds.width * 0.38);
+      const normalizedY = (clientY - targetCenterY) / (targetBounds.height * 0.4);
+      const distance = Math.hypot(normalizedX, normalizedY);
+      const isHit = target.hidden === false && distance <= 1;
+
+      shots += 1;
+      shotsEl.textContent = shots;
+
+      if (!isHit) {
+        misses += 1;
+        missesEl.textContent = misses;
+        gameStatus.textContent = '¡Fallaste! Apunta al objetivo en movimiento.';
+        showFeedback(x, y, 'FALLO', false);
+        return;
+      }
+
+      hits += 1;
+      hitsEl.textContent = hits;
+      const isCritical = distance <= 0.25;
+      const damage = isCritical ? 25 : 10;
+      score += isCritical ? 200 : 100;
+      scoreEl.textContent = score;
+      health = Math.max(0, health - damage);
+      updateHealthUI();
+      gameStatus.textContent = isCritical ? `¡Impacto crítico! -${damage} de vida` : `¡Impacto! -${damage} de vida`;
+      viewerBox.classList.remove('shake');
+      void viewerBox.offsetWidth;
+      viewerBox.classList.add('shake');
+      showFeedback(x, y, isCritical ? `-${damage} ¡CRÍTICO!` : `-${damage}`, true);
+
+      if (health === 0) {
+        gameOver = true;
+        score += 500;
+        scoreEl.textContent = score;
+        gameStatus.textContent = '¡Objetivo neutralizado! +500 puntos. Pulsa NUEVA PARTIDA para volver a jugar.';
+        target.hidden = true;
+        document.getElementById('reset-button').focus();
+      }
+    }
+
+    function moveTarget(timestamp) {
+      if (target.hidden) {
+        window.requestAnimationFrame(moveTarget);
+        return;
+      }
+
+      const halfWidth = target.offsetWidth / 2;
+      const halfHeight = target.offsetHeight / 2;
+      const rangeX = Math.max(0, (viewerBox.clientWidth - target.offsetWidth) / 2);
+      const rangeY = Math.max(0, (viewerBox.clientHeight - target.offsetHeight) / 2);
+      const seconds = timestamp / 1000;
+      const x = halfWidth + rangeX * (1 + Math.sin(seconds * 0.48)) / 2;
+      const y = halfHeight + rangeY * (1 + Math.sin(seconds * 0.69 + 1.1)) / 2;
+
+      target.style.left = `${x}px`;
+      target.style.top = `${y}px`;
+      window.requestAnimationFrame(moveTarget);
+    }
+
+    viewerBox.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch') return;
+      const field = viewerBox.getBoundingClientRect();
+      reticle.style.left = `${event.clientX - field.left}px`;
+      reticle.style.top = `${event.clientY - field.top}px`;
+      reticle.classList.add('is-visible');
+    });
+
+    viewerBox.addEventListener('pointerleave', () => {
+      reticle.classList.remove('is-visible');
+    });
+
+    viewerBox.addEventListener('click', (event) => {
+      handleShot(event.clientX, event.clientY);
+    });
+
+    target.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        const bounds = target.getBoundingClientRect();
+        handleShot(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
       }
     });
 
-    function updateHealthUI() {
-      const pct = (health / maxHealth) * 100;
-      healthBar.style.width = pct + '%';
-      healthText.textContent = `${health} / ${maxHealth}`;
-    }
-
-    function showImpact(x, y) {
-      const spark = document.createElement('div');
-      spark.className = 'impact-mark';
-      spark.style.left = x + 'px';
-      spark.style.top = y + 'px';
-      viewerBox.appendChild(spark);
-      setTimeout(() => spark.remove(), 500);
-    }
-
-    function showDamageText(x, y, text) {
-      const dmg = document.createElement('div');
-      dmg.className = 'damage-text';
-      dmg.textContent = text;
-      dmg.style.left = x + 'px';
-      dmg.style.top = y + 'px';
-      viewerBox.appendChild(dmg);
-      setTimeout(() => dmg.remove(), 600);
-    }
-
-    function resetGame() {
+    document.getElementById('reset-button').addEventListener('click', () => {
       score = 0;
       shots = 0;
       hits = 0;
+      misses = 0;
       health = maxHealth;
+      gameOver = false;
       scoreEl.textContent = '0';
       shotsEl.textContent = '0';
       hitsEl.textContent = '0';
+      missesEl.textContent = '0';
+      target.hidden = false;
+      gameStatus.textContent = '¡Encuentra el objetivo y dispara!';
       updateHealthUI();
-    }
+    });
 
-    
+    updateHealthUI();
+    window.requestAnimationFrame(moveTarget);
   </script>
  
-  <!-- Import the component -->
   <script
     type="module"
     src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"

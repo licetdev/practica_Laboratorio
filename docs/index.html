@@ -9,6 +9,14 @@
   <meta name="description" content="Entra a la zona de caza, apunta y derriba al objetivo 3D." />
   <title>Alien Hunt — Zona de caza 3D</title>
   <link rel="stylesheet" href="css/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 
 <body>
@@ -16,48 +24,63 @@
   <header>
     <p class="eyebrow"><span class="live-dot"></span> SIMULADOR DE ENTRENAMIENTO · ZONA 01</p>
     <h1>ALIEN <span>HUNT</span></h1>
-    <p class="subtitle">Apunta, dispara y derriba al objetivo antes de que escape.</p>
+    <p class="subtitle">Elige una dificultad y derriba todos los objetivos antes de que se agote el tiempo.</p>
   </header>
 
-  <div class="hud" aria-label="Estadísticas de la partida">
-    <div class="hud-card score-card"><span class="stat-label">Puntaje</span><span class="value" id="score" aria-live="polite">0</span></div>
-    <div class="hud-card"><span class="stat-label">Disparos</span><span class="value" id="shots" aria-live="polite">0</span></div>
-    <div class="hud-card"><span class="stat-label">Aciertos</span><span class="value" id="hits" aria-live="polite">0</span></div>
-    <div class="hud-card"><span class="stat-label">Fallos</span><span class="value" id="misses" aria-live="polite">0</span></div>
-  </div>
-
-  <div class="health-container">
-    <div class="health-label">
-      <span>ENERGÍA DEL OBJETIVO</span>
-      <span id="health-text" aria-live="polite">100 / 100</span>
+  <aside class="sidebar" aria-label="Estadísticas y estado de partida">
+    <div class="hud" aria-label="Estadísticas de la partida">
+      <div class="hud-card score-card"><span class="stat-label">Puntaje</span><span class="value" id="score" aria-live="polite">0</span></div>
+      <div class="hud-card"><span class="stat-label">Disparos</span><span class="value" id="shots" aria-live="polite">0</span></div>
+      <div class="hud-card"><span class="stat-label">Aciertos</span><span class="value" id="hits" aria-live="polite">0</span></div>
+      <div class="hud-card"><span class="stat-label">Fallos</span><span class="value" id="misses" aria-live="polite">0</span></div>
     </div>
-    <div class="health-bar-bg" role="progressbar" aria-label="Energía del objetivo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" id="health-progress">
-      <div class="health-bar-fill" id="health-bar"></div>
+    <div class="health-container">
+      <div class="health-label">
+        <span>VIDA DEL OBJETIVO</span>
+        <span id="health-text" aria-live="polite">100 / 100</span>
+      </div>
+      <div class="health-bar-bg" role="progressbar" aria-label="Vida del último objetivo alcanzado" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" id="health-progress">
+        <div class="health-bar-fill" id="health-bar"></div>
+      </div>
+      <div class="game-details">
+        <div><span>TIEMPO</span><strong id="timer">01:00</strong></div>
+        <div><span>OBJETIVOS EN CAMPO</span><strong id="target-count">1</strong></div>
+      </div>
+      <label class="difficulty-picker" for="difficulty-select">
+        DIFICULTAD
+        <select id="difficulty-select">
+          <option value="easy">Fácil · 60 s</option>
+          <option value="medium">Intermedio · 45 s</option>
+          <option value="hard">Difícil · 30 s</option>
+        </select>
+      </label>
+      <p class="difficulty-note">Vida por objetivo: Fácil 100, Intermedio 10, Difícil 5; cada impacto resta 5. La dificultad se aplica al iniciar.</p>
+      <p class="game-status" id="game-status" role="status" aria-live="polite">CARGANDO OBJETIVOS...</p>
     </div>
-    <p class="game-status" id="game-status" aria-live="polite">OBJETIVO ACTIVO · dispara para iniciar</p>
-  </div>
+  </aside>
 
-  <div class="viewer-box" id="viewerBox" aria-label="Campo de tiro">
-    <div class="field-label"><span>CAMPO DE TIRO</span><span>● EN VIVO</span></div>
-    <div class="target" id="target" role="button" tabindex="0" aria-label="Objetivo 3D en movimiento">
-      <model-viewer src="models/reptillian_alien/scene.gltf" auto-rotate disable-zoom
-        interaction-prompt="none" aria-label="Modelo 3D del objetivo"></model-viewer>
+  <div class="game-column">
+    <div class="viewer-box" id="viewerBox" aria-label="Campo de tiro">
+      <div class="field-label"><span>CAMPO DE TIRO</span><span>● EN VIVO</span></div>
+      <canvas id="game-canvas" tabindex="0" role="img" aria-label="Campo de tiro 3D con objetivos móviles. Haz clic para disparar."></canvas>
+      <div class="shot-feedback" id="shot-feedback" aria-hidden="true"></div>
+      <div class="aim-reticle" id="aim-reticle" aria-hidden="true"><span></span></div>
+      <div class="field-hint">MUEVE LA MIRA · CLIC PARA DISPARAR</div>
     </div>
-    <div class="shot-feedback" id="shot-feedback" aria-hidden="true"></div>
-    <div class="aim-reticle" id="aim-reticle" aria-hidden="true"><span></span></div>
-    <div class="field-hint">MUEVE LA MIRA · CLIC PARA DISPARAR</div>
+
+    <div class="controls">
+      <span class="controls-hint">Cada objetivo tiene vida propia · -5 por impacto</span>
+      <span class="audio-status" id="audio-status" role="status" aria-live="polite">SONIDO: SE ACTIVA AL DISPARAR</span>
+      <button id="reset-button" type="button"><span aria-hidden="true">↻</span> NUEVA PARTIDA</button>
+    </div>
   </div>
 
-  <div class="controls">
-    <span class="controls-hint">Cada impacto reduce la energía del objetivo</span>
-    <span class="audio-status" id="audio-status" role="status" aria-live="polite">SONIDO: SE ACTIVA AL DISPARAR</span>
-    <button id="reset-button" type="button"><span aria-hidden="true">↻</span> NUEVA PARTIDA</button>
-  </div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-  <script>
-    const maxHealth = 100;
     const viewerBox = document.getElementById('viewerBox');
-    const target = document.getElementById('target');
+    const canvas = document.getElementById('game-canvas');
     const scoreEl = document.getElementById('score');
     const shotsEl = document.getElementById('shots');
     const hitsEl = document.getElementById('hits');
@@ -69,6 +92,54 @@
     const feedback = document.getElementById('shot-feedback');
     const reticle = document.getElementById('aim-reticle');
     const audioStatus = document.getElementById('audio-status');
+    const timerEl = document.getElementById('timer');
+    const targetCountEl = document.getElementById('target-count');
+    const difficultySelect = document.getElementById('difficulty-select');
+    const resetButton = document.getElementById('reset-button');
+
+    document.addEventListener('selectstart', (event) => {
+      event.preventDefault();
+    });
+
+    const difficulties = {
+      easy: { label: 'FÁCIL', seconds: 60, targetCount: 1, speed: 0.55, targetSize: 210, targetHealth: 100 },
+      medium: { label: 'INTERMEDIO', seconds: 45, targetCount: 10, speed: 1.05, targetSize: 104, targetHealth: 10 },
+      hard: { label: 'DIFÍCIL', seconds: 30, targetCount: 30, speed: 1.65, targetSize: 72, targetHealth: 5 }
+    };
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+    camera.position.z = 500;
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    scene.add(new THREE.AmbientLight(0xffffff, 2.2));
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 3.2);
+    keyLight.position.set(-2, 4, 8);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.PointLight(0xd7ff70, 32, 900);
+    rimLight.position.set(0, 100, 8);
+    scene.add(rimLight);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const modelLoader = new GLTFLoader();
+    const modelPath = 'models/reptillian_alien/scene.gltf';
+    const modelBoundsCenter = new THREE.Vector3();
+    const modelBoundsSphere = new THREE.Sphere();
+    let modelTemplate;
+    let modelSize = 1;
+    let modelRadius = 0;
+    let targets = [];
+    let activeDifficulty = difficulties.easy;
+    let remainingTime = activeDifficulty.seconds * 1000;
+    let gameDeadline = 0;
+    let timerInterval;
+    let gameStarted = false;
+
     let audioContext;
     let audioReadyPromise;
     let shotNoiseBuffer;
@@ -77,7 +148,6 @@
     let shots = 0;
     let hits = 0;
     let misses = 0;
-    let health = maxHealth;
     let gameOver = false;
     let reticleTimer;
 
@@ -188,12 +258,155 @@
       reticleTimer = window.setTimeout(() => reticle.classList.remove('is-firing'), 140);
     }
 
-    function updateHealthUI() {
-      const percentage = (health / maxHealth) * 100;
+    function updateHealthUI(targetHealth = activeDifficulty.targetHealth) {
+      const maximumHealth = activeDifficulty.targetHealth;
+      const percentage = (targetHealth / maximumHealth) * 100;
       healthBar.style.width = `${percentage}%`;
-      healthProgress.setAttribute('aria-valuenow', health);
-      healthText.textContent = `${health} / ${maxHealth}`;
+      healthProgress.setAttribute('aria-valuenow', targetHealth);
+      healthProgress.setAttribute('aria-valuemax', maximumHealth);
+      healthText.textContent = `${targetHealth} / ${maximumHealth}`;
       healthBar.classList.toggle('low', percentage <= 30);
+    }
+
+    function resizeGame() {
+      const width = viewerBox.clientWidth;
+      const height = viewerBox.clientHeight;
+      if (!width || !height) return;
+
+      camera.left = -width / 2;
+      camera.right = width / 2;
+      camera.top = height / 2;
+      camera.bottom = -height / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
+      if (targets.length) layoutTargets();
+    }
+
+    function formatTime(milliseconds) {
+      const totalSeconds = Math.ceil(milliseconds / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function updateTimer() {
+      const now = Date.now();
+      remainingTime = Math.max(0, gameDeadline - now);
+      timerEl.textContent = formatTime(remainingTime);
+      timerEl.classList.toggle('is-urgent', remainingTime <= 10000);
+
+      if (remainingTime === 0) {
+        finishGame(false);
+      }
+    }
+
+    function finishGame(won) {
+      if (gameOver) return;
+      gameOver = true;
+      gameStarted = false;
+      window.clearInterval(timerInterval);
+      gameStatus.classList.toggle('is-game-over', !won);
+      gameStatus.classList.toggle('is-victory', won);
+      gameStatus.setAttribute('aria-live', won ? 'polite' : 'assertive');
+      if (won) {
+        score += 500;
+        scoreEl.textContent = score;
+        gameStatus.textContent = '¡OBJETIVOS NEUTRALIZADOS! +500 puntos. Pulsa NUEVA PARTIDA para volver a jugar.';
+      } else {
+        gameStatus.textContent = 'GAME OVER · Se acabó el tiempo. Pulsa NUEVA PARTIDA para volver a jugar.';
+      }
+      resetButton.focus();
+    }
+
+    function createTargets() {
+      targets.forEach(({ model }) => scene.remove(model));
+      targets = [];
+
+      for (let index = 0; index < activeDifficulty.targetCount; index++) {
+        const model = modelTemplate.clone(true);
+        model.position.sub(modelBoundsCenter);
+        model.rotation.y = Math.random() * Math.PI * 2;
+        scene.add(model);
+        targets.push({
+          model,
+          health: activeDifficulty.targetHealth,
+          phaseX: Math.random() * Math.PI * 2,
+          phaseY: Math.random() * Math.PI * 2,
+          size: activeDifficulty.targetSize,
+          baseX: 0,
+          baseY: 0,
+          amplitudeX: 0,
+          amplitudeY: 0,
+          screenX: 0,
+          screenY: 0
+        });
+      }
+
+      layoutTargets();
+      updateTargetCount();
+    }
+
+    function updateTargetCount() {
+      targetCountEl.textContent = `${targets.length} / ${activeDifficulty.targetCount}`;
+    }
+
+    function layoutTargets() {
+      const width = viewerBox.clientWidth;
+      const height = viewerBox.clientHeight;
+      if (!width || !height || !targets.length) return;
+
+      const columns = Math.ceil(Math.sqrt(targets.length * width / height));
+      const rows = Math.ceil(targets.length / columns);
+      const cellWidth = width / columns;
+      const cellHeight = height / rows;
+
+      targets.forEach((currentTarget, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const padding = Math.min(8, cellWidth / 4, cellHeight / 4);
+        const scale = Math.min(
+          activeDifficulty.targetSize / modelSize,
+          (cellWidth - padding * 2) / (modelRadius * 2),
+          (cellHeight - padding * 2) / (modelRadius * 2)
+        );
+        currentTarget.size = modelSize * scale;
+        currentTarget.radius = modelRadius * scale;
+        currentTarget.model.scale.setScalar(scale);
+        currentTarget.baseX = (column + 0.5) * cellWidth;
+        currentTarget.baseY = (row + 0.5) * cellHeight;
+        currentTarget.amplitudeX = Math.max(0, cellWidth / 2 - currentTarget.radius - padding);
+        currentTarget.amplitudeY = Math.max(0, cellHeight / 2 - currentTarget.radius - padding);
+      });
+    }
+
+    function startGame() {
+      if (!modelTemplate) {
+        gameStatus.textContent = 'CARGANDO EL MODELO 3D...';
+        return;
+      }
+
+      window.clearInterval(timerInterval);
+      activeDifficulty = difficulties[difficultySelect.value];
+      score = 0;
+      shots = 0;
+      hits = 0;
+      misses = 0;
+      gameOver = false;
+      gameStarted = true;
+      remainingTime = activeDifficulty.seconds * 1000;
+      scoreEl.textContent = '0';
+      shotsEl.textContent = '0';
+      hitsEl.textContent = '0';
+      missesEl.textContent = '0';
+      timerEl.textContent = formatTime(remainingTime);
+      gameStatus.classList.remove('is-game-over', 'is-victory');
+      gameStatus.setAttribute('aria-live', 'polite');
+      gameStatus.textContent = `${activeDifficulty.label} · ¡Derriba todos los objetivos!`;
+      createTargets();
+      updateHealthUI();
+
+      gameDeadline = Date.now() + remainingTime;
+      timerInterval = window.setInterval(updateTimer, 100);
     }
 
     function showFeedback(x, y, text, isHit) {
@@ -207,20 +420,38 @@
     }
 
     function handleShot(clientX, clientY) {
-      if (gameOver) return;
+      if (gameOver || !gameStarted) return;
+      if (Date.now() >= gameDeadline) {
+        updateTimer();
+        return;
+      }
 
       const field = viewerBox.getBoundingClientRect();
       const x = clientX - field.left;
       const y = clientY - field.top;
       fireReticle(x, y);
       playShotSound();
-      const targetBounds = target.getBoundingClientRect();
-      const targetCenterX = targetBounds.left + targetBounds.width / 2;
-      const targetCenterY = targetBounds.top + targetBounds.height / 2;
-      const normalizedX = (clientX - targetCenterX) / (targetBounds.width * 0.38);
-      const normalizedY = (clientY - targetCenterY) / (targetBounds.height * 0.4);
-      const distance = Math.hypot(normalizedX, normalizedY);
-      const isHit = target.hidden === false && distance <= 1;
+      const fieldBounds = canvas.getBoundingClientRect();
+      if (!fieldBounds.width || !fieldBounds.height) return;
+      pointer.x = ((clientX - fieldBounds.left) / fieldBounds.width) * 2 - 1;
+      pointer.y = -((clientY - fieldBounds.top) / fieldBounds.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const intersections = raycaster.intersectObjects(targets.map(({ model }) => model), true);
+      const isHit = intersections.length > 0;
+      let selectedTarget;
+
+      if (isHit) {
+        let hitTarget = intersections[0].object;
+        while (hitTarget.parent && !targets.some(({ model }) => model === hitTarget)) {
+          hitTarget = hitTarget.parent;
+        }
+        selectedTarget = targets.find(({ model }) => model === hitTarget);
+        if (!selectedTarget) {
+          console.error('El impacto no corresponde a un objetivo activo.');
+          gameStatus.textContent = 'ERROR AL REGISTRAR EL IMPACTO. INTENTA DE NUEVO.';
+          return;
+        }
+      }
 
       shots += 1;
       shotsEl.textContent = shots;
@@ -235,44 +466,47 @@
 
       hits += 1;
       hitsEl.textContent = hits;
+      const distance = Math.hypot(x - selectedTarget.screenX, y - selectedTarget.screenY) / selectedTarget.size;
       const isCritical = distance <= 0.25;
-      const damage = isCritical ? 25 : 10;
+      const damage = 5;
       score += isCritical ? 200 : 100;
       scoreEl.textContent = score;
-      health = Math.max(0, health - damage);
-      updateHealthUI();
-      gameStatus.textContent = isCritical ? `¡Impacto crítico! -${damage} de vida` : `¡Impacto! -${damage} de vida`;
+      selectedTarget.health = Math.max(0, selectedTarget.health - damage);
+      updateHealthUI(selectedTarget.health);
       viewerBox.classList.remove('shake');
       void viewerBox.offsetWidth;
       viewerBox.classList.add('shake');
-      showFeedback(x, y, isCritical ? `-${damage} ¡CRÍTICO!` : `-${damage}`, true);
-
-      if (health === 0) {
-        gameOver = true;
-        score += 500;
-        scoreEl.textContent = score;
-        gameStatus.textContent = '¡Objetivo neutralizado! +500 puntos. Pulsa NUEVA PARTIDA para volver a jugar.';
-        target.hidden = true;
-        document.getElementById('reset-button').focus();
+      if (selectedTarget.health === 0) {
+        scene.remove(selectedTarget.model);
+        targets.splice(targets.indexOf(selectedTarget), 1);
+        updateTargetCount();
+        gameStatus.textContent = `¡OBJETIVO ELIMINADO! ${targets.length} restantes.`;
+        showFeedback(x, y, 'OBJETIVO ELIMINADO', true);
+        if (targets.length === 0) finishGame(true);
+      } else {
+        gameStatus.textContent = isCritical
+          ? `¡Impacto crítico! -${damage} de vida · ${selectedTarget.health} restantes`
+          : `¡Impacto! -${damage} de vida · ${selectedTarget.health} restantes`;
+        showFeedback(x, y, isCritical ? `-${damage} ¡CRÍTICO!` : `-${damage}`, true);
       }
     }
 
     function moveTarget(timestamp) {
-      if (target.hidden) {
-        window.requestAnimationFrame(moveTarget);
-        return;
+      const width = viewerBox.clientWidth;
+      const height = viewerBox.clientHeight;
+      const seconds = timestamp / 1000;
+      if (gameStarted && width && height) {
+        targets.forEach((currentTarget, index) => {
+          const x = currentTarget.baseX + currentTarget.amplitudeX * Math.sin(seconds * activeDifficulty.speed + currentTarget.phaseX);
+          const y = currentTarget.baseY + currentTarget.amplitudeY * Math.sin(seconds * activeDifficulty.speed * 0.73 + currentTarget.phaseY);
+          currentTarget.screenX = x;
+          currentTarget.screenY = y;
+          currentTarget.model.position.set(x - width / 2, height / 2 - y, 0);
+          currentTarget.model.rotation.y += 0.006 + index * 0.00002;
+        });
       }
 
-      const halfWidth = target.offsetWidth / 2;
-      const halfHeight = target.offsetHeight / 2;
-      const rangeX = Math.max(0, (viewerBox.clientWidth - target.offsetWidth) / 2);
-      const rangeY = Math.max(0, (viewerBox.clientHeight - target.offsetHeight) / 2);
-      const seconds = timestamp / 1000;
-      const x = halfWidth + rangeX * (1 + Math.sin(seconds * 0.48)) / 2;
-      const y = halfHeight + rangeY * (1 + Math.sin(seconds * 0.69 + 1.1)) / 2;
-
-      target.style.left = `${x}px`;
-      target.style.top = `${y}px`;
+      renderer.render(scene, camera);
       window.requestAnimationFrame(moveTarget);
     }
 
@@ -292,37 +526,47 @@
       handleShot(event.clientX, event.clientY);
     });
 
-    target.addEventListener('keydown', (event) => {
+    canvas.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        const bounds = target.getBoundingClientRect();
+        const bounds = canvas.getBoundingClientRect();
         handleShot(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
       }
     });
 
-    document.getElementById('reset-button').addEventListener('click', () => {
-      score = 0;
-      shots = 0;
-      hits = 0;
-      misses = 0;
-      health = maxHealth;
-      gameOver = false;
-      scoreEl.textContent = '0';
-      shotsEl.textContent = '0';
-      hitsEl.textContent = '0';
-      missesEl.textContent = '0';
-      target.hidden = false;
-      gameStatus.textContent = '¡Encuentra el objetivo y dispara!';
-      updateHealthUI();
-    });
+    resetButton.addEventListener('click', startGame);
 
     updateHealthUI();
+    resizeGame();
+    new ResizeObserver(resizeGame).observe(viewerBox);
     window.requestAnimationFrame(moveTarget);
+
+    modelLoader.load(
+      modelPath,
+      (gltf) => {
+        modelTemplate = gltf.scene;
+        const bounds = new THREE.Box3().setFromObject(modelTemplate);
+        bounds.getCenter(modelBoundsCenter);
+        const dimensions = bounds.getSize(new THREE.Vector3());
+        modelSize = Math.max(dimensions.x, dimensions.y, dimensions.z);
+        bounds.getBoundingSphere(modelBoundsSphere);
+        modelRadius = modelBoundsSphere.radius;
+
+        if (!Number.isFinite(modelSize) || modelSize <= 0 || !Number.isFinite(modelRadius) || modelRadius <= 0) {
+          console.error('El modelo 3D no tiene dimensiones válidas.');
+          gameStatus.textContent = 'ERROR: EL MODELO 3D NO TIENE DIMENSIONES VÁLIDAS.';
+          return;
+        }
+
+        gameStatus.textContent = 'OBJETIVOS LISTOS';
+        startGame();
+      },
+      undefined,
+      (error) => {
+        console.error(`No se pudo cargar el modelo 3D (${modelPath}):`, error);
+        gameStatus.textContent = 'ERROR AL CARGAR EL MODELO 3D. RECARGA LA PÁGINA.';
+      }
+    );
   </script>
- 
-  <script
-    type="module"
-    src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js"
-  ></script>
 </body>
 </html>
